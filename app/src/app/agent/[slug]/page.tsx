@@ -17,9 +17,110 @@ interface ProfileData {
     total_activities: number;
     activity_counts: Record<string, number>;
     activity_timeline: Record<string, number>;
+    activity_by_day: Record<string, number>;
     specializations: string[];
   };
 }
+
+// ─── Heatmap ─────────────────────────────────────────────────────────────────
+
+/** Color intensity based on activity count per day */
+function heatColor(count: number): string {
+  if (count === 0) return "bg-gray-100";
+  if (count === 1) return "bg-green-200";
+  if (count <= 3) return "bg-green-400";
+  return "bg-green-600";
+}
+
+/**
+ * Builds a 53-week × 7-day grid anchored to today.
+ * Returns an array of week columns, each with 7 day cells.
+ */
+function buildGrid(activityByDay: Record<string, number>) {
+  const today = new Date();
+
+  // Start on the Sunday 52 full weeks before today's week-start
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - today.getDay() - 52 * 7);
+
+  const weeks: Array<Array<{ date: string; count: number; isFuture: boolean }>> = [];
+  const cursor = new Date(startDate);
+
+  while (cursor <= today) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      const iso = cursor.toISOString().split("T")[0];
+      week.push({
+        date: iso,
+        count: activityByDay[iso] ?? 0,
+        isFuture: cursor > today,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  return weeks;
+}
+
+function ActivityHeatmap({ activityByDay }: { activityByDay: Record<string, number> }) {
+  const weeks = buildGrid(activityByDay);
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase mb-3">
+        Activity (last 12 months)
+      </h2>
+
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {/* Day-of-week labels */}
+        <div className="flex flex-col gap-1 mr-1 mt-0">
+          {DAY_LABELS.map((label) => (
+            <div
+              key={label}
+              className="h-3 w-6 text-gray-400 text-[9px] leading-3 flex items-center"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {/* Week columns */}
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-1">
+            {week.map(({ date, count, isFuture }) => (
+              <div
+                key={date}
+                title={
+                  isFuture
+                    ? ""
+                    : count === 0
+                    ? `${date}: no activity`
+                    : `${date}: ${count} activit${count === 1 ? "y" : "ies"}`
+                }
+                className={`w-3 h-3 rounded-sm ${
+                  isFuture ? "bg-transparent" : heatColor(count)
+                }`}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-1 mt-2">
+        <span className="text-gray-400 text-[10px] mr-1">Less</span>
+        {["bg-gray-100", "bg-green-200", "bg-green-400", "bg-green-600"].map((cls) => (
+          <div key={cls} className={`w-3 h-3 rounded-sm ${cls}`} />
+        ))}
+        <span className="text-gray-400 text-[10px] ml-1">More</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentProfilePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -115,36 +216,8 @@ export default function AgentProfilePage() {
         </div>
       )}
 
-      {/* Activity timeline - simple bar representation */}
-      {Object.keys(stats.activity_timeline).length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-gray-500 uppercase mb-3">
-            Activity Timeline
-          </h2>
-          <div className="flex items-end gap-1 h-24">
-            {Object.entries(stats.activity_timeline)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .slice(-26) // Last 26 weeks
-              .map(([week, count]) => {
-                const maxCount = Math.max(
-                  ...Object.values(stats.activity_timeline)
-                );
-                const height = Math.max(4, (count / maxCount) * 100);
-                return (
-                  <div
-                    key={week}
-                    className="bg-green-500 rounded-sm flex-1 min-w-1"
-                    style={{ height: `${height}%` }}
-                    title={`${week}: ${count} activities`}
-                  />
-                );
-              })}
-          </div>
-          <p className="text-gray-400 text-xs mt-1">
-            Weekly activity (last 6 months)
-          </p>
-        </div>
-      )}
+      {/* Activity heatmap — GitHub-style 52-week grid */}
+      <ActivityHeatmap activityByDay={stats.activity_by_day} />
 
       <div className="mt-8 pt-4 border-t text-center text-gray-400 text-xs">
         Verified by Activus AI

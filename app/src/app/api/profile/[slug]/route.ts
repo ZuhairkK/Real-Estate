@@ -31,15 +31,21 @@ export async function GET(
   // Aggregate into profile stats
   const activityCounts: Record<string, number> = {};
   const activityTimeline: Record<string, number> = {};
+  // Day-level map for the heatmap grid (keyed YYYY-MM-DD)
+  const activityByDay: Record<string, number> = {};
 
   for (const activity of activities || []) {
     // Count by type
     activityCounts[activity.activity_type] =
       (activityCounts[activity.activity_type] || 0) + 1;
 
-    // Weekly activity graph
+    // Weekly rollup (kept for backwards compat)
     const weekKey = getWeekKey(new Date(activity.activity_date));
     activityTimeline[weekKey] = (activityTimeline[weekKey] || 0) + 1;
+
+    // Daily rollup for heatmap
+    const dayKey = activity.activity_date; // already YYYY-MM-DD from DB
+    activityByDay[dayKey] = (activityByDay[dayKey] || 0) + 1;
   }
 
   // Determine specialization from top activity types
@@ -65,6 +71,7 @@ export async function GET(
       total_activities: totalActivities,
       activity_counts: activityCounts,
       activity_timeline: activityTimeline,
+      activity_by_day: activityByDay,
       specializations,
     },
   });
